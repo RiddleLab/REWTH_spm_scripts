@@ -358,6 +358,6 @@ for subIdx = 1:numSub
         glmInfo.numRegressors = allNumNuissanceRegressors;
 
         %% Run the GLM
-        glm_SPM12_JR(SUB_GLMDIR, epiFiles, glmInfo);
+        glm_SPM12_JR_TM(SUB_GLMDIR, epiFiles, glmInfo);
     end % loop run types (task or rest)
 end % subjects loop
