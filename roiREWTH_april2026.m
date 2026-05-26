@@ -25,11 +25,11 @@ roiVersion = 'april2026';
 
 %% Data paths
 % Raw data is stored on CHAOS drive
-RAW_DATA = 'Z:\REWTH\';
+RAW_DATA = 'R:\REWTH\';
 % Scripts (where this script lives) should be in GitHub synced folder
-GITHUB_CODEBASE = 'C:\Users\jr23z\GitHub_Codebase\';
+GITHUB_CODEBASE = 'C:\Users\tjm25d\Documents\';
 % Local data analysis on computer
-LOCAL_DATA = 'C:\Users\jr23z\LocalDataAnalysis\REWTH\';
+LOCAL_DATA = 'C:\Users\tjm25d\Documents\REWTH_FMRI\REWTH_FMRI_SPM\';
 
 % Load relevant toolboxes
 RIDDLER_TOOLBOX = [GITHUB_CODEBASE 'RiddlerToolbox/'];
@@ -37,7 +37,7 @@ addpath(genpath(RIDDLER_TOOLBOX));
 SPM12_TOOLBOX = [GITHUB_CODEBASE 'Toolboxes/spm12/'];
 addpath(SPM12_TOOLBOX);
 spm('defaults', 'FMRI');
-MARSBAR_TOOLBOX = [GITHUB_CODEBASE 'Toolboxes/marsbar-0.44/'];
+MARSBAR_TOOLBOX = [SPM12_TOOLBOX 'toolbox/marsbar/'];
 addpath(MARSBAR_TOOLBOX);
 marsbar('on');
 
@@ -51,13 +51,15 @@ mkdir_JR(GLM_MRI);
 % Directory for ROIs
 ROI_DIR = [GLM_MRI 'ROIs_' glmVersion '/'];
 mkdir_JR(ROI_DIR);
+GENERAL_ROIS = [LOCAL_DATA 'GeneralROIs/'];
+mkdir_JR(GENERAL_ROIS);
 
 % Design matrices for the task
 DES_MAT = [GLM_MRI 'DesignMatrices\'];
 mkdir_JR(DES_MAT);
 
 % Subjects
-SUBJECTS = {'sub006'};
+SUBJECTS = {'sub006','sub002', 'sub007','sub013'};
 numSub = length(SUBJECTS);
 
 % Two different types of analysis
@@ -93,7 +95,6 @@ for subIdx = 1:numSub
         movefile(chaos_structFile,subMNI_structFile);
     end
 
-
     % Participant's subject-space anatomical
     subSpace_structFilename = sprintf('sub-%s_desc-preproc_T1w.nii',subID);
     subSpace_structFile = [SUB_ROI subSpace_structFilename];
@@ -128,6 +129,7 @@ for subIdx = 1:numSub
                 validAnswer = 1;
             end
         end
+
         % If the user is ready with the aMFG coordinates
         if run_rmPFCcreation
             % If it does not exist then generate it
@@ -160,9 +162,114 @@ for subIdx = 1:numSub
             movefile(backNormROIfiles{1},bNorm_rmPFC_roiFile);
             
         end
-
-        % 3. Calculate seed-based connectivity for sgACC
-        % 4. Manually type in the dlPFC coordinates in MNI space
-        % 5. Back-normalize the dlPFC site into subject space
     end
-end
+
+    %% Step 3: check that the MNI subgenual cingulate exists
+    sgACC_MNI_roiFile = [GENERAL_ROIS 'mniSpace_sgACC_may2026.nii'];
+    if exist(sgACC_MNI_roiFile,'file')~=2
+        % In Cash et al., 2021 & in Fox et al., 2012 the peak
+        % coordinate in MNI space was (6, 16, -10) with a 10 mm sphere
+        roiName = 'sgACC';
+        % If it does not exist then generate it
+        roiCoordinates = NaN(1,3);
+        % Loop through each coordinate
+        for coordIdx = 1:length(coords)
+            coord = coords{coordIdx};
+            % Request the user to type in the coordinates
+            validAnswer = 0;
+            while ~validAnswer
+                thisCoord_str = input(sprintf('What is the %s for %s?: ',...
+                    coord,roiName),'s');
+                thisCoord = str2double(thisCoord_str);
+                if ~isnan(thisCoord) && (abs(thisCoord) < 200)
+                    roiCoordinates(coordIdx) = thisCoord;
+                    validAnswer = 1;
+                end
+            end
+        end
+        [outputImageFiles,~] = makeROIs_fromCoordinates(...
+            'MNI',{'sgACC'},roiCoordinates,'sphere',10,subMNI_structFile,GENERAL_ROIS);
+        movefile(outputImageFiles{1},sgACC_MNI_roiFile);
+    end
+
+    %% Step 5: Create a nuissance mask for this participant
+    sub_brainMaskFile = [SUB_ROI 'nuissanceMask_' subject '_' roiVersion '.nii'];
+    if exist(sub_brainMaskFile,'file')~=2
+        numTissues = 5;
+        segmentedTissueFiles = cell(1,numTissues);
+        for tissueIdx = 1:numTissues
+            segmentedTissueFiles{tissueIdx} = ...
+                sprintf('%sc%i%s',SUB_ROI,tissueIdx,subSpace_structFilename);
+        end
+        % GM, WM, CSF, SKULL, OUTSIDE
+        weights = [0.2 -0.9 -0.9 -0.9 -0.9];
+        % Generate a nuissance mask
+        nuissanceMaskMaker(weights,segmentedTissueFiles,sub_brainMaskFile);
+    end
+
+    %% Step 6: Normalize the nuissance mask
+    mni_sub_brainMaskFile = [SUB_ROI 'mni_nuissanceMask_' subject '_' roiVersion '.nii'];
+    if exist(mni_sub_brainMaskFile,'file')~=2
+        normalize_spm12(subSpace_structFile,{sub_brainMaskFile},SUB_ROI,0)  %TM added "0" to get MNI naming convention on 5-26-26
+    end
+
+    %% Step 7: Run Seed based connectivity with sgACC
+    SUB_GLM = [GLM_MRI 'Rest_MNI_' glmVersion '/' subject '/'];
+    mni_restingStateResiduals = [SUB_GLM 'Residuals_4d.nii'];
+    sgACC_seedConnFile = [SUB_ROI 'mni_sgACC_seedConn_Rest_' subject '_' roiVersion '.nii'];
+    if exist(sgACC_seedConnFile,'file')~=2
+        connectivitySeedBased({sgACC_MNI_roiFile}, {mni_restingStateResiduals},mni_sub_brainMaskFile,{sgACC_seedConnFile})
+    end
+
+    %% Step 8: Manually type in the dlPFC coordinates in MNI space
+    roiName = 'dlPFC';
+    coords = {'X','Y','Z'};
+    bNorm_dlPFC_roiFile = [SUB_ROI subject '_subjectSpace_' roiName '_' roiVersion '.nii'];
+    if exist(bNorm_dlPFC_roiFile,'file')~=2
+
+        validAnswer = 0;
+        while ~validAnswer
+            inputROI_str = input(sprintf('Do you have %s MNI coordinates for %s? (y or n): ',...
+                roiName,subject),'s');
+            if strcmpi(inputROI_str,'y')
+                run_dlPFCcreation = 1;
+                validAnswer = 1;
+            elseif strcmpi(inputROI_str,'n')
+                run_dlPFCcreation = 0;
+                validAnswer = 1;
+            end
+        end
+    end
+
+    % If the user is ready with the aMFG coordinates
+    if run_dlPFCcreation
+        % If it does not exist then generate it
+        roiCoordinates = NaN(1,3);
+        % Loop through each coordinate
+        for coordIdx = 1:length(coords)
+            coord = coords{coordIdx};
+            % Request the user to type in the coordinates
+            validAnswer = 0;
+            while ~validAnswer
+                thisCoord_str = input(sprintf('What is the %s MNI coord for %s?: ',...
+                    coord,roiName),'s');
+                thisCoord = str2double(thisCoord_str);
+                if ~isnan(thisCoord) && (abs(thisCoord) < 200)
+                    roiCoordinates(coordIdx) = thisCoord;
+                    validAnswer = 1;
+                end
+            end
+        end
+        roi_rootFilename = [subject '_MNI_' roiVersion];
+        [outputImageFiles,~] = makeROIs_fromCoordinates(...
+            roi_rootFilename,{'dlPFC'},roiCoordinates,'sphere',5,subMNI_structFile,SUB_ROI);
+        dlPFC_roiFile = outputImageFiles{1};
+    
+        %% Step 9: back-normalize the dlPFC ROI
+        % files for structural get written into the STRUCT_DIR 'ROIs/' 
+        % epis go into reslice dir
+        [backNormROIfiles] = backNormROI_REWTH(subSpace_structFile,...
+            subSpace_structFile,{dlPFC_roiFile},'bNorm_',SUB_ROI);
+        movefile(backNormROIfiles{1},bNorm_rmPFC_roiFile);
+    end % if running dlPFC ROI creation (coords acquired)
+end % loop subjects

@@ -269,6 +269,10 @@ for subIdx = 1:numSub
             hdrLine = fgetl(fmriprep_regressorsFID);
             hdrParts = regexp(hdrLine,'\t','split');
 
+            NUISSANCE_REGRESSORS = {...
+                'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
+                'csf','white_matter','framewise_displacement'};
+
             % Nuissance regressors - TM modified version on 5-10-26 to account for
             % different number of non-steady state outliers (3, 2, 1, or 0 - in order)
             if any(strcmp('non_steady_state_outlier02', hdrParts))
@@ -289,9 +293,6 @@ for subIdx = 1:numSub
                     'csf','white_matter',...
                     'non_steady_state_outlier00','framewise_displacement'};
             else
-                NUISSANCE_REGRESSORS = {...
-                    'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
-                    'csf','white_matter','framewise_displacement'};
             end
 
             % Let's try without global signal, the task data looks a lot better 'global_signal',

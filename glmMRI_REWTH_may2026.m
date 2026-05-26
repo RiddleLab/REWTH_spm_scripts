@@ -50,7 +50,7 @@ DES_MAT = [GLM_MRI 'DesignMatrices\'];
 mkdir_JR(DES_MAT);
 
 % Subjects
-SUBJECTS = {'pilot002'}; % 'sub002', 'sub007'
+SUBJECTS = {'sub002', 'sub006', 'sub007','sub013'};
 numSub = length(SUBJECTS);
 
 % Two different types of analysis
@@ -85,6 +85,11 @@ FrameDisp_threshold = 0.2;
 for subIdx = 1:numSub
     subject = SUBJECTS{subIdx};
     subID = subject(4:end);
+    if strcmp(subject, 'pilot002') %%%% temporary to process Jake pilot data - TM on 5-18-26
+        subID = 'pilot002';
+    else
+        subID = subject(4:end);
+    end
 
     % BIDS fMRI prep - paths to preprocessed data
     SUB_PREPROC_MRI = [BIDS_MRI 'BIDS_' subject '\derivatives\fmriprep-25.2.0\sub-' subID '\'];
@@ -264,29 +269,20 @@ for subIdx = 1:numSub
             hdrLine = fgetl(fmriprep_regressorsFID);
             hdrParts = regexp(hdrLine,'\t','split');
 
-            % Nuissance regressors - TM modified version on 5-10-26 to account for
-            % different number of non-steady state outliers (3, 2, 1, or 0 - in order)
-            if any(strcmp('non_steady_state_outlier02', hdrParts))
-                NUISSANCE_REGRESSORS = {...
-                    'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
-                    'csf','white_matter',...
-                    'non_steady_state_outlier00','non_steady_state_outlier01',...
-                    'non_steady_state_outlier02','framewise_displacement'};
-            elseif any(strcmp('non_steady_state_outlier01', hdrParts))
-                NUISSANCE_REGRESSORS = {...
-                    'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
-                    'csf','white_matter',...
-                    'non_steady_state_outlier00','non_steady_state_outlier01',...
-                    'framewise_displacement'};
-            elseif any(strcmp('non_steady_state_outlier00', hdrParts))
-                NUISSANCE_REGRESSORS = {...
-                    'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
-                    'csf','white_matter',...
-                    'non_steady_state_outlier00','framewise_displacement'};
-            else
-                NUISSANCE_REGRESSORS = {...
-                    'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
-                    'csf','white_matter','framewise_displacement'};
+            NUISSANCE_REGRESSORS = {...
+                'trans_x','trans_y','trans_z','rot_x','rot_y','rot_z',...
+                'csf','white_matter','framewise_displacement'};
+
+            % Sometimes there are non-steady state outliers that should be
+            % added as additional regresssors
+            nonSteady_hdrIdxs = find(contains(hdrParts,'non_steady_state_outlier'));
+            numNonSteady = length(nonSteady_hdrIdxs);
+            for nonSteadyIdx = 1:numNonSteady
+                nonSteady_hdrIdx = nonSteady_hdrIdxs(nonSteadyIdx);
+                % extract the header name
+                regressorName = hdrParts{nonSteady_hdrIdx};
+                % append to the end
+                NUISSANCE_REGRESSORS{end+1} = regressorName;
             end
 
             % Let's try without global signal, the task data looks a lot better 'global_signal',
@@ -361,10 +357,9 @@ for subIdx = 1:numSub
 
         % If no REST scans, then skip this GLM and move on to SAVOR - % TM added on 5-18-26
         if numEPIs == 0
-            fprintf('No EPI files found for %s %s - skipping to next GLM.\', subject, runType);
+            fprintf('No EPI files found for %s %s - skipping to next GLM.\n', subject, runType);
             continue; % skip to next runType
         end
-
 
         glm_SPM12_JR_TM(SUB_GLMDIR, epiFiles, glmInfo);
     end % loop run types (task or rest)
