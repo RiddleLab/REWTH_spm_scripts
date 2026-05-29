@@ -210,7 +210,10 @@ for subIdx = 1:numSub
     %% Step 6: Normalize the nuissance mask
     mni_sub_brainMaskFile = [SUB_ROI 'mni_nuissanceMask_' subject '_' roiVersion '.nii'];
     if exist(mni_sub_brainMaskFile,'file')~=2
-        normalize_spm12(subSpace_structFile,{sub_brainMaskFile},SUB_ROI,0)  %TM added "0" to get MNI naming convention on 5-26-26
+        fmriprepBB = [-96 -130 -78; 90 108 90];
+        normalize_spm12_TM(subSpace_structFile,{sub_brainMaskFile},SUB_ROI,0,0,fmriprepBB)  %TM added "0" to get MNI naming convention on 5-26-26 
+        % / TM then added extra "0" and the fMRIprepBB argument to adjust
+        % the boundary box to match what it is for fMRIPrep data outputs
     end
 
     %% Step 7: Run Seed based connectivity with sgACC

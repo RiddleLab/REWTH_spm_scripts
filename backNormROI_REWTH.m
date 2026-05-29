@@ -34,13 +34,13 @@ numROIs = length(toBackNormROIs);
 outputBnormFiles = cell(1,numROIs);
 
 % ROIs saved in sub directory within structural directory
-[structuralDirectory,~,~] = fileparts(structuralImage);
+[structuralDirectory,structFilename,~] = fileparts(structuralImage);
 structuralDirectory = [structuralDirectory '/'];
 
 %% Step 1: estimate the noramlization of the structural image
 %   get the inverse normalization estimate as well
 inverseDeformPrefix = 'iy_';
-inverseDeformationFndr = dir([structuralDirectory inverseDeformPrefix '*']);
+inverseDeformationFndr = dir([structuralDirectory inverseDeformPrefix structFilename '*']);
 if isempty(inverseDeformationFndr)
     fprintf('Running Segmentation\n');
     clear matlabbatch
@@ -51,7 +51,7 @@ if isempty(inverseDeformationFndr)
     % change defaults to generate [inverse forward] normalization
     matlabbatch{1}.spm.spatial.preproc.warp.write = [1 1];
     spm_jobman('run',matlabbatch);
-    inverseDeformationFndr = dir([structuralDirectory inverseDeformPrefix '*']);
+    inverseDeformationFndr = dir([structuralDirectory inverseDeformPrefix structFilename '*']);
 end
 inverseDeformationFile = [structuralDirectory inverseDeformationFndr(1).name];
 
@@ -82,96 +82,3 @@ for roiIdx = 1:numROIs
     end
 end
 end
-%% ALL OF THIS EPIC FAILS!
-% % Number of ROIs to be back-normalized
-% numROIs = length(toBackNormROIs);
-% outputEPIroiFiles = cell(1,numROIs);
-% 
-% % ROIs saved in sub directory within structural directory
-% [structuralDirectory,~,~] = fileparts(structuralImage);
-% structuralDirectory = [structuralDirectory '/'];
-% structROI_DIR = [structuralDirectory 'ROIs/'];
-% mkdir_JR(structROI_DIR);
-% 
-% % Step 1: estimate the noramlization of the structural image
-% %   get the inverse normalization estimate as well
-% inverseDeformPrefix = 'iy_';
-% inverseDeformFndr = dir([structuralDirectory inverseDeformPrefix '*']);
-% if isempty(inverseDeformFndr)
-%     fprintf('Running Segmentation\n');
-%     clear matlabbatch
-%     spm_jobman('initcfg');
-%     toSegmentStructFile = dir([structuralDirectory 'ons*.nii']);
-%     matlabbatch{1}.spm.spatial.preproc.channel(1).vols = {[structuralDirectory toSegmentStructFile(1).name]};
-%     % mean bias corrected image is written out
-%     matlabbatch{1}.spm.spatial.preproc.channel.write = [0 1];
-%     % change defaults to generate [inverse forward] normalization
-%     matlabbatch{1}.spm.spatial.preproc.warp.write = [1 1];
-%     spm_jobman('run',matlabbatch);
-%     inverseDeformFndr = dir([structuralDirectory inverseDeformPrefix '*']);
-% end
-% inverseDeformFile = [structuralDirectory inverseDeformFndr(1).name];
-% 
-% 
-% 
-% % ROI to be back-normalized
-% % this step does not fix the bounding box...
-% % do that in step 3
-% step2prefix = 'badBB';
-% for roiIdx = 1:numROIs
-%     
-%     % roi info
-%     normROI = toBackNormROIs{roiIdx};
-%     [atlasDir,roi_name,ext] = fileparts(normROI);
-%     
-%     backNormRoiFile = [outputDirectory outputPrefix roi_name ext]; 
-%     % Because the bounding box is wrong we still have to resample
-%     if exist(backNormRoiFile,'file')~=2
-%     
-%         
-%         %% STEP 2: apply back-normalization
-%         % get bounding box and voxel size from the structural image
-%         struct_V = spm_vol(structuralImage);
-%         [BB,VX]=spm_get_bbox(struct_V);
-%         % in testing, it looked like the bounding box was shrunken
-%         % these lines add some buffer window then the bb will shrink to the desired
-%         % BB(1,1) = BB(1,1)+VX(1);
-%         % BB(2,2) = BB(2,2)+VX(2);
-%         % BB(2,3) = BB(2,3)+VX(3);
-% 
-%         badBB_backNormStructRoiFile = [structROI_DIR step2prefix roi_name ext];
-%         if restart && exist(badBB_backNormStructRoiFile,'file')==2
-%             delete(badBB_backNormStructRoiFile);
-%         end
-%         if exist(badBB_backNormStructRoiFile,'file')==2
-%             fprintf('Skipping back normalization for ROI%i\n',roiIdx);
-%         else
-%             fprintf('Running back normalization for ROI%i\n',roiIdx);
-%             % Batch SPM step
-%             clear matlabbatch
-%             spm('defaults', 'fmri');
-%             spm_jobman('initcfg');
-%             matlabbatch{1}.spm.spatial.normalise.write.subj.def = {inverseDeformFile};
-%             matlabbatch{1}.spm.spatial.normalise.write.subj.resample = {normROI};
-%             matlabbatch{1}.spm.spatial.normalise.write.woptions.bb = BB;
-%             matlabbatch{1}.spm.spatial.normalise.write.woptions.vox =VX;
-%             matlabbatch{1}.spm.spatial.normalise.write.woptions.interp = 4;
-%             matlabbatch{1}.spm.spatial.normalise.write.woptions.prefix = '';
-%             spm_jobman('run',matlabbatch);
-% 
-%             % movefile to the correct directory
-%             movefile([atlasDir '/w' roi_name ext],[structROI_DIR  step2prefix roi_name ext]);
-%         end
-% 
-%         %% STEP 3: resample the structural ROI into EPI-space
-%         fprintf('Resample backnorm structural ROI into EPI space\n');
-%         command = ['3dresample -master ' outputSpaceImage ' -inset ' badBB_backNormStructRoiFile ' -prefix ' backNormRoiFile];
-%         system(command);
-%     end
-%     outputEPIroiFiles{roiIdx} = backNormRoiFile;
-%         
-% end
-% fprintf('Done\n')
-% 
-% 
-% end
